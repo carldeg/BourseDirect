@@ -1,0 +1,175 @@
+import selenium.common.exceptions
+from selenium import webdriver
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import Select
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.uvi import WebDriverWait
+import datetime as dt
+import time, json, os, sys
+
+
+
+class Connection:
+
+    def __init__(self, Display, download_path):
+    
+        self.login = sys.argv[1]
+        self.password = sys.argv[2]
+
+        timeout = 5
+        s = Service(ChromeDriverManager(log_level=0).install())
+        chrome_options = Options()
+        if download_path == None:
+            pass
+        else:
+            prefs = {"download.default_directory": download_path}
+            chrome_options.add_experimental_option("prefs", prefs)
+
+        if Display == False:
+            chrome_options.add_argument("--headless")
+            self.driver = webdriver.Chrome(service=s, options=chrome_options)
+        else:
+            self.driver = webdriver.Chrome(service=s, options=chrome_options)
+            self.driver.maximize_window()
+
+        self.driver.get("https://www.boursedirect.fr/fr/login")
+        print('\n> Connexion...')
+
+        notice = EC.presence_of_element_located((By.ID, 'didomi-notice-agree-button'))
+        WebDriverWait(self.driver, timeout).until(notice).click()
+
+        self.driver.find_element(by=By.ID, value='bd_auth_login_type_login').send_keys(str(self.login))
+        self.driver.find_element(by=By.ID, value='bd_auth_login_type_password').send_keys(str(self.password))
+        self.driver.find_element(by=By.ID, value='bd_auth_login_type_submit').click()
+
+        time.sleep(4)
+        timeout = 5
+        try:
+            pub = EC.presence_of_element_located((By.CLASS_NAME, 'btn-modal-close'))
+            WebDriverWait(self.driver, timeout).until(pub).click()
+        except selenium.common.exceptions.ElementNotInteractableException:
+            pass
+
+        print("> Connecté à Bourse Direct.",end='\r')
+
+    def close_connection(self):
+        self.driver.close()
+
+
+
+
+
+class BourseDirectOrder(Connection):
+
+    def __init__(self, Display, download_path):
+
+        super().__init__(Display=Display, download_path=download_path)
+        self.dwd_path = download_path
+        # market, limit, best_limit, stop, stop_limit, tal
+
+    def execute(self, order):
+
+        self.order = order
+        self.ordertype = order['ORDERTYPE']
+
+        searchbar = EC.presence_of_element_located((By.ID, 'searchbar-input'))
+        timeout = 5
+        WebDriverWait(self.driver, timeout).until(searchbar).send_keys(str(self.order['ISIN']))
+
+        self.driver.find_element(by='id', value="searchbar-input").send_keys(Keys.ENTER)
+
+        tradingboard = EC.presence_of_element_located((By.ID, 'quantity'))
+        timeout = 5
+        WebDriverWait(self.driver, timeout).until(tradingboard).send_keys(str(self.order['QUANTITE']))
+
+        if self.order['SENS'] == 'achat':
+            self.driver.find_element(by=By.XPATH,
+                                     value='/html/body/div[4]/div[4]/div/div[2]/div[1]/div[2]/header/div[3]/div/div/div/div/div/div/form/div/div[2]/div/div[1]/div/div[1]/div/div[1]/div/div/label[1]').click()
+
+        elif self.order['SENS'] == 'vente':
+            self.driver.find_element(by=By.XPATH,
+                                     value='/html/body/div[4]/div[4]/div/div[2]/div[1]/div[2]/header/div[3]/div/div/div/div/div/div/form/div/div[2]/div/div[1]/div/div[1]/div/div[1]/div/div/label[2]').click()
+
+        if self.ordertype == 'market':
+            self.market_order()
+
+        elif self.ordertype == 'limit':
+            self.limit_order()
+
+        elif self.ordertype == 'best_limit':
+            self.best_limit_order()
+
+        elif self.ordertype == 'tal':
+            self.tal_order()
+
+        elif self.ordertype == 'stop':
+            self.stop_order()
+
+        elif self.ordertype == 'stop_limit':
+            self.stop_limit_order()
+
+        self.validation()
+        return
+
+    def validation(self):
+
+        if self.order['VIRTUAL'] == 'on':
+            print("[VIRTUAL]--> Ordre envoyé (heure d\'envoi) {}.".format(dt.datetime.now().strftime('%H:%M:%S')))
+            return
+        elif self.order['VIRTUAL'] == 'off':
+
+            validation = EC.presence_of_element_located((By.CLASS_NAME, 'container-validate'))
+            timeout = 5
+            WebDriverWait(self.driver, timeout).until(validation).click()
+
+            time.sleep(2)
+            validation = EC.presence_of_element_located((By.CLASS_NAME, 'container-validate'))
+            timeout = 5
+            WebDriverWait(self.driver, timeout).until(validation).click()
+            print('--> Ordre envoyé (heure d\'envoi) {}.'.format(dt.datetime.now().strftime('%H:%M:%S')))
+            time.sleep(2)
+            self.driver.find_element(by=By.XPATH,
+                                     value='/html/body/div[4]/div[4]/div/div[2]/div[1]/div[2]/header/div[3]/div/div/div/div/div/div/div/div/div/p[1]/a/i').click()
+
+            print('--> TermSheet téléchargée.')
+            return
+
+    def market_order(self):
+
+        select = Select(self.driver.find_element(by=By.ID, value='order_type'))
+        select.select_by_value('market')
+
+    def limit_order(self):
+
+        select = Select(self.driver.find_element(by=By.ID, value='order_type'))
+        select.select_by_value('limit')
+
+        timeout = 5
+        limit = EC.presence_of_element_located((By.ID, 'limit'))
+        WebDriverWait(self.driver, timeout).until(limit).send_keys(str(self.order['LIMIT/STOP']).replace('.', ','))
+
+    def best_limit_order(self):
+
+        select = Select(self.driver.find_element(by=By.ID, value='order_type'))
+        select.select_by_value('best_limit')  # market, limit, best_limit, stop, stop_limit, tal
+
+    def tal_order(self):
+
+        select = Select(self.driver.find_element(by=By.ID, value='order_type'))
+        select.select_by_value('tal')  # market, limit, best_limit, stop, stop_limit, tal
+
+    def stop_order(self):
+
+        select = Select(self.driver.find_element(by=By.ID, value='order_type'))
+        select.select_by_value('stop')  # market, limit, best_limit, stop, stop_limit, tal
+        self.driver.find_element(by=By.ID, value='stop').send_keys(str(self.order['LIMIT/STOP']).replace('.', ','))
+
+    def stop_limit_order(self, order):
+        select = Select(self.driver.find_element(by=By.ID, value='order_type'))
+        select.select_by_value('stop_limit')  # market, limit, best_limit, stop, stop_limit, tal
+        self.driver.find_element(by=By.ID, value='limit').send_keys(str(order['LIMIT/STOP'][0]).replace('.', ','))
+        self.driver.find_element(by=By.ID, value='stop').send_keys(str(order['LIMIT/STOP'][1]).replace('.', ','))
