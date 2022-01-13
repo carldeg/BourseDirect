@@ -7,7 +7,7 @@ To execute an order, please proceed like this :
 (Make sure you wrote your Login and you Pwd as cmd line argument)
 
 Exemple :
-
+'''
 order = {
 
     "ISIN": 'FR0000130809',
@@ -27,3 +27,4 @@ dwd_path = 'C:\\Users\\carld\\OneDrive\\Bureau\\Documents\\ProjetPython\\Classes
 bd = BourseDirectInfo(Display=True, download_path=dwd_path)
 bd.execute(order=order)
 bd.close_connection()
+'''
