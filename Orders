@@ -17,8 +17,8 @@ class Connection:
 
     def __init__(self, Display, download_path):
     
-        self.login = sys.argv[1]
-        self.password = sys.argv[2]
+        self.login = sys.argv[1] #Your login as first argument
+        self.password = sys.argv[2] #Your password as second argument
 
         timeout = 5
         s = Service(ChromeDriverManager(log_level=0).install())
